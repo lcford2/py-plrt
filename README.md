@@ -2,7 +2,7 @@
 
 This package combines two widely used and interpretable machine learning algorithms: Decision Trees and Linear Regression.
 Decision Trees are non-parametric, supervised learning methods that split the data at a specific threshold for a specific feature to optimize a loss function (e.g. mean square error (MSE)). 
-Linear regression is a parametric, supervised learning method that use a linear combination of a set of features to predict a response variable. 
+Linear regression is a parametric, supervised learning method that uses a linear combination of a set of features to predict a response variable. 
 
 Decision Trees typically predict the mean of the response variable in a particular leaf.
 Models that predict the mean are often referred to as the "Null Model" for a particular dataset. 
