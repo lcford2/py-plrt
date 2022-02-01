@@ -1,6 +1,12 @@
+# environment info
 .venv
-**/__pycache__
 **/.dir-locals.el
+
+# python intermediates
+**/__pycache__
+
+# pypi info 
 dist
 build
+src/*.egg-info
 
