@@ -3,7 +3,8 @@ import datetime
 import pandas as pd
 from sklearn.metrics import r2_score, mean_squared_error
 
-from tclr import TreeComboLR
+from ..tclr import TreeComboLR
+import sys
 
 
 
@@ -95,11 +96,11 @@ def main():
     # setup model input
     features = ["storage_pre", "release_pre", "inflow"]
     response = "release"
-    X = scaled_train[features].values
-    y = scaled_train[response].values
+    X = scaled_train[features]
+    y = scaled_train[response]
 
     # define and train model
-    model = TreeComboLR(X, y, feature_names=features, response_name=response)
+    model = TreeComboLR(X, y)
     model.grow_tree()
 
     # get predictions
@@ -139,6 +140,8 @@ def main():
     )
     print("Testing set reservoir metrics:")
     print(test_scores)
+    from IPython import embed as II
+    II()
 
 if __name__ == "__main__":
     main()

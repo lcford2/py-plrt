@@ -2,10 +2,12 @@ import codecs
 from io import StringIO
 
 import numpy as np
+import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.optimize import minimize
 from sklearn.metrics import mean_squared_error
 from treelib import Tree
+from IPython import embed as II
 
 
 class TreeComboLR:
@@ -16,10 +18,12 @@ class TreeComboLR:
 
     def __init__(
         self,
-        X: np.array,
-        y: np.array,
+        X,
+        y,
         min_samples_split=None,
         max_depth=None,
+        tree_vars=None,
+        reg_vars=None,
         curr_depth=0,
         method="Nelder-Mead",
         feature_names=None,
@@ -28,9 +32,33 @@ class TreeComboLR:
         ID=0,
         parent=None,
     ):
-        self.X = X
-        self.y = y
-        self.N = self.X.shape[0]
+        self.N = X.shape[0]
+        if isinstance(X, pd.DataFrame):
+            self.X = X.values
+            self.feats = list(X.columns)
+        else:
+            self.X = X
+            self.feats = list(range(X.shape[1]))
+
+        if isinstance(X, (pd.DataFrame, pd.Series)):
+            self.y = y.values
+            self.response = y.name
+        else:
+            self.y = y
+            self.response = "y"
+
+        if tree_vars is not None:
+            self.tree_vars = [self.feats.index(i) for i in tree_vars]
+        else:
+            self.tree_vars = list(range(X.shape[1]))
+
+        if reg_vars is not None:
+            self.reg_vars = [self.feats.index(i) for i in reg_vars]
+        else:
+            self.reg_vars = list(range(X.shape[1]))
+
+        self.feats = feature_names if feature_names else self.feats
+        self.response = response_name if response_name else self.response
 
         self.min_samples_split = (
             min_samples_split if min_samples_split else int(self.N * 0.05)
@@ -39,8 +67,6 @@ class TreeComboLR:
         self.curr_depth = curr_depth
         self.method = method
 
-        self.feats = feature_names if feature_names else list(range(self.N))
-        self.response = response_name if response_name else "y"
         self.rule = None
 
         self.node_type = node_type if node_type else "root"
@@ -58,7 +84,10 @@ class TreeComboLR:
         self.best_feat = None
         self.best_val = None
 
-        self.params = self._solve_regression()
+        try:
+            self.params = self._solve_regression()
+        except np.linalg.LinAlgError as e:
+            II()
         yhat = self._predict_regression(self.params)
 
         self.mse = mean_squared_error(self.y, yhat)
@@ -67,15 +96,16 @@ class TreeComboLR:
         if self.mse > TreeComboLR.max_mse:
             TreeComboLR.max_mse = self.mse
 
-    def _solve_regression(self, X=None, y=None):
+    def _solve_regression(self, X=None, y=None, reg_vars=None):
         X = self.X if X is None else X
         y = self.y if y is None else y
-
+        reg_vars = self.reg_vars if reg_vars is None else reg_vars
+        X = X[:, reg_vars]
         return np.linalg.inv(X.T @ X) @ (X.T @ y)
 
     def _predict_regression(self, p, X=None):
         X = self.X if X is None else X
-
+        X = X[:, self.reg_vars]
         return X @ p
 
     def _split_node_data(self, thresh, feat_id, X=None, y=None):
@@ -92,6 +122,17 @@ class TreeComboLR:
 
         return X_left, X_right, y_left, y_right
 
+    def _check_all_entries_same(self, matrix):
+        bad_columns = []
+        for col in range(matrix.shape[1]):
+            result = np.all(matrix[:, col] == matrix[0, col])
+            if result:
+                bad_columns.append(col)
+        return bad_columns
+
+    def _check_all_entries_zero(self, matrix):
+        return list(np.where(~matrix.any(axis=0))[0])
+
     def _get_node_score(self, thresh, feat_id, X=None, y=None):
         X = self.X if X is None else X
         y = self.y if y is None else y
@@ -101,11 +142,39 @@ class TreeComboLR:
         N_left = y_left.shape[0]
         N_right = y_right.shape[0]
 
+        # i do not know if this is optimal or not but it prevents
+        # splits with zero in either the left or right side
         if N_left == 0 or N_right == 0:
-            return np.mean(y) ** 2
+            return float("inf")
+        try:
+            p_left = self._solve_regression(X_left, y_left)
+            left_reg_vars = self.reg_vars
+        except np.linalg.LinAlgError as e:
+            bad_columns = self._check_all_entries_zero(X_left)
+            bad_features = [self.feats[i] for i in bad_columns]
+            print(f"Node {self.ID} Left Split: {e}")
+            print(f"Dropping {', '.join(bad_features)} because they are all zero")
+            print("Columns of zero create singular matrices due to linear dependence")
 
-        p_left = self._solve_regression(X_left, y_left)
-        p_right = self._solve_regression(X_right, y_right)
+            left_reg_vars = list(filter(lambda x: x not in bad_columns, self.reg_vars))
+            p_left = self._solve_regression(X_left, y_left, left_reg_vars)
+            for col in bad_columns:
+                p_left = np.insert(p_left, col, 0.0)
+
+        try:
+            p_right = self._solve_regression(X_right, y_right)
+            right_reg_vars = self.reg_vars
+        except np.linalg.LinAlgError as e:
+            bad_columns = self._check_all_entries_zero(X_right)
+            bad_features = [self.feats[i] for i in bad_columns]
+            print(f"Node {self.ID} Right Split: {e}")
+            print(f"Dropping {', '.join(bad_features)} because they are all zero")
+            print("Columns of zero create singular matrices due to linear dependence")
+
+            right_reg_vars = list(filter(lambda x: x not in bad_columns, self.reg_vars))
+            p_right = self._solve_regression(X_right, y_right, right_reg_vars)
+            for col in bad_columns:
+                p_right = np.insert(p_right, col, 0.0)
 
         yhat_left = self._predict_regression(p_left, X_left)
         yhat_right = self._predict_regression(p_right, X_right)
@@ -126,7 +195,7 @@ class TreeComboLR:
         best_val = None
         mse = self.mse
 
-        for feat_id in range(X.shape[1]):
+        for feat_id in self.tree_vars:
             opt = minimize(
                 self._get_node_score,
                 [np.mean(X[:, feat_id])],
@@ -135,13 +204,17 @@ class TreeComboLR:
             )
 
             if opt.fun < mse:
-                best_feat = feat_id
-                best_val = opt.x[0]
-                mse = opt.fun
-                if mse < TreeComboLR.min_mse:
-                    TreeComboLR.min_mse = mse
-                if mse > TreeComboLR.max_mse:
-                    TreeComboLR.max_mse = mse
+                X_left, X_right, y_left, y_right = self._split_node_data(
+                    opt.x[0], feat_id
+                )
+                if X_left.shape[0] > 0 and X_right.shape[0] > 0:
+                    best_feat = feat_id
+                    best_val = opt.x[0]
+                    mse = opt.fun
+                    if mse < TreeComboLR.min_mse:
+                        TreeComboLR.min_mse = mse
+                    if mse > TreeComboLR.max_mse:
+                        TreeComboLR.max_mse = mse
 
         return best_feat, best_val
 
@@ -160,14 +233,16 @@ class TreeComboLR:
                 self.rule = f"{self.feats[best_feat]} > {best_val:.3f}"
 
                 left = TreeComboLR(
-                    X_left,
-                    y_left,
-                    self.min_samples_split,
-                    self.max_depth,
-                    self.curr_depth + 1,
-                    self.method,
-                    self.feats,
-                    self.response,
+                    X=X_left,
+                    y=y_left,
+                    min_samples_split=self.min_samples_split,
+                    max_depth=self.max_depth,
+                    curr_depth=self.curr_depth + 1,
+                    method=self.method,
+                    feature_names=self.feats,
+                    response_name=self.response,
+                    tree_vars=self.tree_vars,
+                    reg_vars=self.reg_vars,
                     node_type="left_node",
                     ID=TreeComboLR.node_count + 1,
                     parent=self.ID,
@@ -178,14 +253,16 @@ class TreeComboLR:
                 self.left.grow_tree()
 
                 right = TreeComboLR(
-                    X_right,
-                    y_right,
-                    self.min_samples_split,
-                    self.max_depth,
-                    self.curr_depth + 1,
-                    self.method,
-                    self.feats,
-                    self.response,
+                    X=X_right,
+                    y=y_right,
+                    min_samples_split=self.min_samples_split,
+                    max_depth=self.max_depth,
+                    curr_depth=self.curr_depth + 1,
+                    method=self.method,
+                    feature_names=self.feats,
+                    response_name=self.response,
+                    tree_vars=self.tree_vars,
+                    reg_vars=self.reg_vars,
                     node_type="right_node",
                     ID=TreeComboLR.node_count + 1,
                     parent=self.ID,
@@ -208,7 +285,7 @@ class TreeComboLR:
 
     def _print_params(self, width=4):
         const = int(self.curr_depth * width ** 1.5)
-        param_format = [f"{i}: {j:.3f}" for i, j in zip(self.feats, self.params)]
+        param_format = [f"{self.feats[i]}: {j:.3f}" for i, j in zip(self.reg_vars, self.params)]
         print(f"{' ' * const}   | Regression Params:")
         for p in param_format:
             print(f"{' ' * (const + width)}   | {p}")
@@ -236,6 +313,8 @@ class TreeComboLR:
 
     def apply(self, X=None):
         X = self.X if X is None else X
+        if hasattr(X, "values"):
+            X = X.values
         N = X.shape[0]
         parms = []
         ids = []
@@ -247,13 +326,15 @@ class TreeComboLR:
 
     def predict(self, X=None):
         X = self.X if X is None else X
+        if hasattr(X, "values"):
+            X = X.values
         params, ids = self.apply(X)
         return (X * params).sum(axis=1)
 
     def _format_params_for_graph(self):
         min_width = 0
-        for feat in self.feats:
-            width = len(feat) + 7
+        for feat_id in self.reg_vars:
+            width = len(self.feats[feat_id]) + 12
             if width > min_width:
                 min_width = width
 
