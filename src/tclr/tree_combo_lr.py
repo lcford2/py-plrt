@@ -329,6 +329,7 @@ class TreeComboLR:
         if hasattr(X, "values"):
             X = X.values
         params, ids = self.apply(X)
+        X = X[:, self.reg_vars]
         return (X * params).sum(axis=1)
 
     def _format_params_for_graph(self):
