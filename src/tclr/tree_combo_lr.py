@@ -6,7 +6,6 @@ import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.optimize import minimize
 from sklearn.metrics import mean_squared_error
-from IPython import embed as II
 
 
 class TreeComboLR:
@@ -271,8 +270,6 @@ class TreeComboLR:
                 self.right = right
                 self.right.fit()
 
-
-
     def _print_info(self, width=4):
         const = int(self.curr_depth * width ** 1.5)
         spaces = "-" * const
@@ -286,7 +283,9 @@ class TreeComboLR:
 
     def _print_params(self, width=4):
         const = int(self.curr_depth * width ** 1.5)
-        param_format = [f"{self.feats[i]}: {j:.3f}" for i, j in zip(self.reg_vars, self.params)]
+        param_format = [
+            f"{self.feats[i]}: {j:.3f}" for i, j in zip(self.reg_vars, self.params)
+        ]
         print(f"{' ' * const}   | Regression Params:")
         for p in param_format:
             print(f"{' ' * (const + width)}   | {p}")
@@ -360,11 +359,7 @@ class TreeComboLR:
         nid = node.ID
         mse = [node.mse]
         # interpolate for the color
-        rgb = (
-            int(interps[0](mse)[0]),
-            int(interps[1](mse)[0]),
-            int(interps[2](mse)[0])
-        )
+        rgb = (int(interps[0](mse)[0]), int(interps[1](mse)[0]), int(interps[2](mse)[0]))
         myhex = self._rgb_to_hex(rgb)
         # determine text based on if it is a leaf or not
         if node.rule is None:
@@ -389,15 +384,9 @@ class TreeComboLR:
             if nid == 0:
                 # when node is root, child is the first
                 # less than or equal to split
-                labelinfo = [
-                    "labeldistance=2.5",
-                    "labelangle=45",
-                    "headlabel=\"False\""
-                ]
+                labelinfo = ["labeldistance=2.5", "labelangle=45", 'headlabel="False"']
                 labelinfo = f"[{', '.join(labelinfo)}]"
-                conlist.append(
-                    f'"{nid}" -> "{cid}" {labelinfo}'
-                )
+                conlist.append(f'"{nid}" -> "{cid}" {labelinfo}')
             else:
                 conlist.append(f'"{nid}" -> "{cid}"')
             # recurse down left child
@@ -408,15 +397,9 @@ class TreeComboLR:
             if nid == 0:
                 # when node is root, right child is first
                 # greater than split
-                labelinfo = [
-                    "labeldistance=2.5",
-                    "labelangle=-45",
-                    "headlabel=\"True\""
-                ]
+                labelinfo = ["labeldistance=2.5", "labelangle=-45", 'headlabel="True"']
                 labelinfo = f"[{', '.join(labelinfo)}]"
-                conlist.append(
-                    f'"{nid}" -> "{cid}" {labelinfo}'
-                )
+                conlist.append(f'"{nid}" -> "{cid}" {labelinfo}')
             else:
                 conlist.append(f'"{nid}" -> "{cid}"')
             # recurse down right child
@@ -434,16 +417,13 @@ class TreeComboLR:
 
         # interpolate between max and min
         rinterp = interp1d(
-            [TreeComboLR.min_mse, TreeComboLR.max_mse],
-            [min_rgb[0], max_rgb[0]],
+            [TreeComboLR.min_mse, TreeComboLR.max_mse], [min_rgb[0], max_rgb[0]],
         )
         ginterp = interp1d(
-            [TreeComboLR.min_mse, TreeComboLR.max_mse],
-            [min_rgb[1], max_rgb[1]],
+            [TreeComboLR.min_mse, TreeComboLR.max_mse], [min_rgb[1], max_rgb[1]],
         )
         binterp = interp1d(
-            [TreeComboLR.min_mse, TreeComboLR.max_mse],
-            [min_rgb[2], max_rgb[2]],
+            [TreeComboLR.min_mse, TreeComboLR.max_mse], [min_rgb[2], max_rgb[2]],
         )
         interps = [rinterp, ginterp, binterp]
 
