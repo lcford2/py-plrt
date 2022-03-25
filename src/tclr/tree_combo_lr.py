@@ -6,7 +6,6 @@ import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.optimize import minimize
 from sklearn.metrics import mean_squared_error
-from treelib import Tree
 from IPython import embed as II
 
 
@@ -87,7 +86,7 @@ class TreeComboLR:
         try:
             self.params = self._solve_regression()
         except np.linalg.LinAlgError as e:
-            II()
+            print(f"Cannot solve initial regression due to {e}")
         yhat = self._predict_regression(self.params)
 
         self.mse = mean_squared_error(self.y, yhat)
@@ -218,7 +217,7 @@ class TreeComboLR:
 
         return best_feat, best_val
 
-    def grow_tree(self):
+    def fit(self):
         N = self.X.shape[0]
 
         if (self.curr_depth < self.max_depth) and (N >= self.min_samples_split):
@@ -230,27 +229,7 @@ class TreeComboLR:
 
                 self.best_feat = best_feat
                 self.best_val = best_val
-                self.rule = f"{self.feats[best_feat]} > {best_val:.3f}"
-
-                left = TreeComboLR(
-                    X=X_left,
-                    y=y_left,
-                    min_samples_split=self.min_samples_split,
-                    max_depth=self.max_depth,
-                    curr_depth=self.curr_depth + 1,
-                    method=self.method,
-                    feature_names=self.feats,
-                    response_name=self.response,
-                    tree_vars=self.tree_vars,
-                    reg_vars=self.reg_vars,
-                    node_type="left_node",
-                    ID=TreeComboLR.node_count + 1,
-                    parent=self.ID,
-                )
-
-                TreeComboLR.node_count += 1
-                self.left = left
-                self.left.grow_tree()
+                self.rule = f"{self.feats[best_feat]} &le; {best_val:.3f}"
 
                 right = TreeComboLR(
                     X=X_right,
@@ -270,7 +249,28 @@ class TreeComboLR:
 
                 TreeComboLR.node_count += 1
                 self.right = right
-                self.right.grow_tree()
+                self.right.fit()
+
+                left = TreeComboLR(
+                    X=X_left,
+                    y=y_left,
+                    min_samples_split=self.min_samples_split,
+                    max_depth=self.max_depth,
+                    curr_depth=self.curr_depth + 1,
+                    method=self.method,
+                    feature_names=self.feats,
+                    response_name=self.response,
+                    tree_vars=self.tree_vars,
+                    reg_vars=self.reg_vars,
+                    node_type="left_node",
+                    ID=TreeComboLR.node_count + 1,
+                    parent=self.ID,
+                )
+
+                TreeComboLR.node_count += 1
+                self.left = left
+                self.left.fit()
+
 
     def _print_info(self, width=4):
         const = int(self.curr_depth * width ** 1.5)
@@ -354,36 +354,76 @@ class TreeComboLR:
     def _rgb_to_hex(rgb):
         return "#%02x%02x%02x" % rgb
 
-    def _build_tree_graph(self, tree=None):
-        tree = Tree() if tree is None else tree
-
-        if self.rule is None:
+    def _make_graphviz_labels(self, node, interps, nodelist, conlist):
+        # get information about current node
+        nid = node.ID
+        mse = [node.mse]
+        # interpolate for the color
+        rgb = (
+            int(interps[0](mse)[0]),
+            int(interps[1](mse)[0]),
+            int(interps[2](mse)[0])
+        )
+        myhex = self._rgb_to_hex(rgb)
+        # determine text based on if it is a leaf or not
+        if node.rule is None:
             param_format = self._format_params_for_graph()
-            rule = "\n".join(param_format)
+            tag = "\n".join(param_format)
         else:
-            rule = self.rule
+            tag = node.rule
 
-        mse_fmt = f"mse = {self.mse:.3f}\n"
-        pct_smp = f"samples = {self.N / TreeComboLR.init_N * 100:0.1f}%\n"
-        rule = mse_fmt + pct_smp + rule
+        # formatting text
+        mse_fmt = f"mse = {node.mse:.3f}\n"
+        pct_smp = f"samples = {node.N / TreeComboLR.init_N * 100:0.1f}%\n"
+        tag = mse_fmt + pct_smp + tag
 
-        if self.ID == 0:
-            tree.create_node(rule, self.ID, data=self.mse)  # root
-        else:
-            tree.create_node(rule, self.ID, parent=self.parent, data=self.mse)
+        # append 'dot' information to nodelist
+        state = f'"{nid}" [label="{tag}", fillcolor="{myhex}"]'
+        nodelist.append(state)
 
-        if self.left is not None:
-            self.left._build_tree_graph(tree)
-
-        if self.right is not None:
-            self.right._build_tree_graph(tree)
-
-        return tree
+        # check children (left and right)
+        if node.left:
+            child = node.left
+            cid = child.ID
+            if nid == 0:
+                # when node is root, child is the first
+                # less than or equal to split
+                labelinfo = [
+                    "labeldistance=2.5",
+                    "labelangle=45",
+                    "headlabel=\"False\""
+                ]
+                labelinfo = f"[{', '.join(labelinfo)}]"
+                conlist.append(
+                    f'"{nid}" -> "{cid}" {labelinfo}'
+                )
+            else:
+                conlist.append(f'"{nid}" -> "{cid}"')
+            # recurse down left child
+            self._make_graphviz_labels(child, interps, nodelist, conlist)
+        if node.right:
+            child = node.right
+            cid = child.ID
+            if nid == 0:
+                # when node is root, right child is first
+                # greater than split
+                labelinfo = [
+                    "labeldistance=2.5",
+                    "labelangle=-45",
+                    "headlabel=\"True\""
+                ]
+                labelinfo = f"[{', '.join(labelinfo)}]"
+                conlist.append(
+                    f'"{nid}" -> "{cid}" {labelinfo}'
+                )
+            else:
+                conlist.append(f'"{nid}" -> "{cid}"')
+            # recurse down right child
+            self._make_graphviz_labels(child, interps, nodelist, conlist)
 
     def to_graphviz(self, filename=None, shape="rectangle", graph="digraph"):
         # adapted from treelib.tree implementation
         """Exports the tree in the dot format of the graphviz software"""
-        tree = self._build_tree_graph()
 
         # coloring of nodes
         min_col = "#FFFFFF"
@@ -404,21 +444,46 @@ class TreeComboLR:
             [TreeComboLR.min_mse, TreeComboLR.max_mse],
             [min_rgb[2], max_rgb[2]],
         )
+        interps = [rinterp, ginterp, binterp]
 
         # get information for graph output
         nodes, connections = [], []
-        if tree.nodes:
-            for n in tree.expand_tree(mode=tree.WIDTH):
-                nid = tree[n].identifier
-                mse = [tree[n].data]
-                rgb = (int(rinterp(mse)[0]), int(ginterp(mse)[0]), int(binterp(mse)[0]))
-                myhex = self._rgb_to_hex(rgb)
-                state = f'"{nid}" [label="{tree[n].tag}", fillcolor="{myhex}"]'
-                nodes.append(state)
+        self._make_graphviz_labels(self, interps, nodes, connections)
 
-                for c in tree.children(nid):
-                    cid = c.identifier
-                    connections.append('"{0}" -> "{1}"'.format(nid, cid))
+        # if tree.nodes:
+        #     for n in tree.expand_tree(mode=tree.WIDTH):
+        #         nid = tree[n].identifier
+        #         mse = [tree[n].data]
+        #         rgb = (int(rinterp(mse)[0]), int(ginterp(mse)[0]), int(binterp(mse)[0]))
+        #         myhex = self._rgb_to_hex(rgb)
+        #         state = f'"{nid}" [label="{tree[n].tag}", fillcolor="{myhex}"]'
+        #         nodes.append(state)
+
+        #         for c in tree.children(nid):
+        #             cid = c.identifier
+        #             if nid == 0:
+        #                 if cid == 1:
+        #                     labelinfo = [
+        #                         "labeldistance=2.5",
+        #                         "labelangle=-45",
+        #                         "headlabel=\"False\""
+        #                     ]
+        #                     labelinfo = f"[{', '.join(labelinfo)}]"
+        #                     connections.append(
+        #                         f'"{nid}" -> "{cid}" {labelinfo}'
+        #                     )
+        #                 else:
+        #                     labelinfo = [
+        #                         "labeldistance=2.5",
+        #                         "labelangle=45",
+        #                         "headlabel=\"True\""
+        #                     ]
+        #                     labelinfo = f"[{', '.join(labelinfo)}]"
+        #                     connections.append(
+        #                         f'"{nid}" -> "{cid}" {labelinfo}'
+        #                     )
+        #             else:
+        #                 connections.append(f'"{nid}" -> "{cid}"')
 
         # write nodes and connections to dot format
         is_plain_file = filename is not None
