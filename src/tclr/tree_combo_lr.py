@@ -231,6 +231,26 @@ class TreeComboLR:
                 self.best_val = best_val
                 self.rule = f"{self.feats[best_feat]} &le; {best_val:.3f}"
 
+                left = TreeComboLR(
+                    X=X_left,
+                    y=y_left,
+                    min_samples_split=self.min_samples_split,
+                    max_depth=self.max_depth,
+                    curr_depth=self.curr_depth + 1,
+                    method=self.method,
+                    feature_names=self.feats,
+                    response_name=self.response,
+                    tree_vars=self.tree_vars,
+                    reg_vars=self.reg_vars,
+                    node_type="left_node",
+                    ID=TreeComboLR.node_count + 1,
+                    parent=self.ID,
+                )
+
+                TreeComboLR.node_count += 1
+                self.left = left
+                self.left.fit()
+
                 right = TreeComboLR(
                     X=X_right,
                     y=y_right,
@@ -251,25 +271,6 @@ class TreeComboLR:
                 self.right = right
                 self.right.fit()
 
-                left = TreeComboLR(
-                    X=X_left,
-                    y=y_left,
-                    min_samples_split=self.min_samples_split,
-                    max_depth=self.max_depth,
-                    curr_depth=self.curr_depth + 1,
-                    method=self.method,
-                    feature_names=self.feats,
-                    response_name=self.response,
-                    tree_vars=self.tree_vars,
-                    reg_vars=self.reg_vars,
-                    node_type="left_node",
-                    ID=TreeComboLR.node_count + 1,
-                    parent=self.ID,
-                )
-
-                TreeComboLR.node_count += 1
-                self.left = left
-                self.left.fit()
 
 
     def _print_info(self, width=4):
