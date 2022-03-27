@@ -431,41 +431,6 @@ class TreeComboLR:
         nodes, connections = [], []
         self._make_graphviz_labels(self, interps, nodes, connections)
 
-        # if tree.nodes:
-        #     for n in tree.expand_tree(mode=tree.WIDTH):
-        #         nid = tree[n].identifier
-        #         mse = [tree[n].data]
-        #         rgb = (int(rinterp(mse)[0]), int(ginterp(mse)[0]), int(binterp(mse)[0]))
-        #         myhex = self._rgb_to_hex(rgb)
-        #         state = f'"{nid}" [label="{tree[n].tag}", fillcolor="{myhex}"]'
-        #         nodes.append(state)
-
-        #         for c in tree.children(nid):
-        #             cid = c.identifier
-        #             if nid == 0:
-        #                 if cid == 1:
-        #                     labelinfo = [
-        #                         "labeldistance=2.5",
-        #                         "labelangle=-45",
-        #                         "headlabel=\"False\""
-        #                     ]
-        #                     labelinfo = f"[{', '.join(labelinfo)}]"
-        #                     connections.append(
-        #                         f'"{nid}" -> "{cid}" {labelinfo}'
-        #                     )
-        #                 else:
-        #                     labelinfo = [
-        #                         "labeldistance=2.5",
-        #                         "labelangle=45",
-        #                         "headlabel=\"True\""
-        #                     ]
-        #                     labelinfo = f"[{', '.join(labelinfo)}]"
-        #                     connections.append(
-        #                         f'"{nid}" -> "{cid}" {labelinfo}'
-        #                     )
-        #             else:
-        #                 connections.append(f'"{nid}" -> "{cid}"')
-
         # write nodes and connections to dot format
         is_plain_file = filename is not None
         if is_plain_file:
