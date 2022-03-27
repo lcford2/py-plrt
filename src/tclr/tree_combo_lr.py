@@ -26,9 +26,10 @@ class TreeComboLR:
         method="Nelder-Mead",
         feature_names=None,
         response_name=None,
-        node_type=None,
-        ID=0,
-        parent=None,
+        # variables used internally
+        _node_type=None,
+        _ID=0,
+        _parent=None
     ):
         self.N = X.shape[0]
         if isinstance(X, pd.DataFrame):
@@ -65,12 +66,16 @@ class TreeComboLR:
         self.curr_depth = curr_depth
         self.method = method
 
+        self.njobs = njobs
+        self.nprocs_per_job = nprocs_per_job
+        os.environ["MKL_NUM_THREADS"] = str(nprocs_per_job)
+
         self.rule = None
 
-        self.node_type = node_type if node_type else "root"
-        self.ID = ID
-        self.parent = parent
-        if ID == 0:
+        self._node_type = _node_type if _node_type else "root"
+        self._ID = _ID
+        self._parent = _parent
+        if _ID == 0:
             TreeComboLR.node_count = 0
             TreeComboLR.min_mse = float("inf")
             TreeComboLR.max_mse = -float("inf")
@@ -150,7 +155,7 @@ class TreeComboLR:
         except np.linalg.LinAlgError as e:
             bad_columns = self._check_all_entries_zero(X_left)
             bad_features = [self.feats[i] for i in bad_columns]
-            print(f"Node {self.ID} Left Split: {e}")
+            print(f"Node {self._ID} Left Split: {e}")
             print(f"Dropping {', '.join(bad_features)} because they are all zero")
             print("Columns of zero create singular matrices due to linear dependence")
 
@@ -165,7 +170,7 @@ class TreeComboLR:
         except np.linalg.LinAlgError as e:
             bad_columns = self._check_all_entries_zero(X_right)
             bad_features = [self.feats[i] for i in bad_columns]
-            print(f"Node {self.ID} Right Split: {e}")
+            print(f"Node {self._ID} Right Split: {e}")
             print(f"Dropping {', '.join(bad_features)} because they are all zero")
             print("Columns of zero create singular matrices due to linear dependence")
 
@@ -241,9 +246,9 @@ class TreeComboLR:
                     response_name=self.response,
                     tree_vars=self.tree_vars,
                     reg_vars=self.reg_vars,
-                    node_type="left_node",
-                    ID=TreeComboLR.node_count + 1,
-                    parent=self.ID,
+                    _node_type="left_node",
+                    _ID=TreeComboLR.node_count + 1,
+                    _parent=self._ID,
                 )
 
                 TreeComboLR.node_count += 1
@@ -261,9 +266,9 @@ class TreeComboLR:
                     response_name=self.response,
                     tree_vars=self.tree_vars,
                     reg_vars=self.reg_vars,
-                    node_type="right_node",
-                    ID=TreeComboLR.node_count + 1,
-                    parent=self.ID,
+                    _node_type="right_node",
+                    _ID=TreeComboLR.node_count + 1,
+                    _parent=self._ID,
                 )
 
                 TreeComboLR.node_count += 1
@@ -274,7 +279,7 @@ class TreeComboLR:
         const = int(self.curr_depth * width ** 1.5)
         spaces = "-" * const
 
-        if self.node_type == "root":
+        if self._node_type == "root":
             print("Root")
         else:
             print(f"|{spaces} Split rule: {self.rule}")
@@ -309,7 +314,7 @@ class TreeComboLR:
             else:
                 return self.right._find_params(row)
         else:
-            return (self.params, self.ID)
+            return (self.params, self._ID)
 
     def apply(self, X=None):
         X = self.X if X is None else X
@@ -356,7 +361,7 @@ class TreeComboLR:
 
     def _make_graphviz_labels(self, node, interps, nodelist, conlist):
         # get information about current node
-        nid = node.ID
+        nid = node._ID
         mse = [node.mse]
         # interpolate for the color
         rgb = (int(interps[0](mse)[0]), int(interps[1](mse)[0]), int(interps[2](mse)[0]))
@@ -380,7 +385,7 @@ class TreeComboLR:
         # check children (left and right)
         if node.left:
             child = node.left
-            cid = child.ID
+            cid = child._ID
             if nid == 0:
                 # when node is root, child is the first
                 # less than or equal to split
@@ -393,7 +398,7 @@ class TreeComboLR:
             self._make_graphviz_labels(child, interps, nodelist, conlist)
         if node.right:
             child = node.right
-            cid = child.ID
+            cid = child._ID
             if nid == 0:
                 # when node is root, right child is first
                 # greater than split
