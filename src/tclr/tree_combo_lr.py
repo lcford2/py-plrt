@@ -6,6 +6,7 @@ import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.optimize import minimize
 from sklearn.metrics import mean_squared_error
+from joblib import Parallel, delayed
 
 
 class TreeComboLR:
@@ -26,6 +27,7 @@ class TreeComboLR:
         method="Nelder-Mead",
         feature_names=None,
         response_name=None,
+        njobs=1,
         # variables used internally
         _node_type=None,
         _ID=0,
@@ -67,8 +69,6 @@ class TreeComboLR:
         self.method = method
 
         self.njobs = njobs
-        self.nprocs_per_job = nprocs_per_job
-        os.environ["MKL_NUM_THREADS"] = str(nprocs_per_job)
 
         self.rule = None
 
@@ -198,26 +198,62 @@ class TreeComboLR:
         best_val = None
         mse = self.mse
 
-        for feat_id in self.tree_vars:
-            opt = minimize(
-                self._get_node_score,
-                [np.mean(X[:, feat_id])],
-                args=(feat_id, X, y),
-                method=self.method,
-            )
+        # could parallelize this, especially if running on
+        # a system with a lot of processors.
+        # scipy.opt.minimize will use OpenMP to speed up
+        # optimization and with less than 16 cores available
+        # it is probably fastest to iterate and then optimize on all
+        # of those cores, especially if you have a lot of data and few variables
+        # However, if you have more cores, less data, more variables, or
+        # a combination thereof, it could be faster to split optimize
+        # for multiple variables at a time and check the best value at the end.
+        # TODO: Could add options for parallelizing this process (e.g., njobs, nprocs_per_job, etc)
 
+        # EXAMPLE
+        if self.njobs > 1:
+            opts = Parallel(n_jobs=self.njobs, verbose=0)(
+                delayed(minimize)(
+                    self._get_node_score,
+                    [np.mean(X[:, feat_id])],
+                    args=(feat_id, X, y),
+                    method=self.method
+                ) for feat_id in self.tree_vars
+            )
+            best = np.argmin([i.fun for i in opts])
+            opt = opts[best]
             if opt.fun < mse:
                 X_left, X_right, y_left, y_right = self._split_node_data(
-                    opt.x[0], feat_id
+                    opt.x[0], best
                 )
                 if X_left.shape[0] > 0 and X_right.shape[0] > 0:
-                    best_feat = feat_id
+                    best_feat = self.tree_vars[best]
                     best_val = opt.x[0]
                     mse = opt.fun
                     if mse < TreeComboLR.min_mse:
                         TreeComboLR.min_mse = mse
                     if mse > TreeComboLR.max_mse:
                         TreeComboLR.max_mse = mse
+        else:
+            for feat_id in self.tree_vars:
+                opt = minimize(
+                    self._get_node_score,
+                    [np.mean(X[:, feat_id])],
+                    args=(feat_id, X, y),
+                    method=self.method,
+                )
+
+                if opt.fun < mse:
+                    X_left, X_right, y_left, y_right = self._split_node_data(
+                        opt.x[0], feat_id
+                    )
+                    if X_left.shape[0] > 0 and X_right.shape[0] > 0:
+                        best_feat = feat_id
+                        best_val = opt.x[0]
+                        mse = opt.fun
+                        if mse < TreeComboLR.min_mse:
+                            TreeComboLR.min_mse = mse
+                        if mse > TreeComboLR.max_mse:
+                            TreeComboLR.max_mse = mse
 
         return best_feat, best_val
 
@@ -246,6 +282,7 @@ class TreeComboLR:
                     response_name=self.response,
                     tree_vars=self.tree_vars,
                     reg_vars=self.reg_vars,
+                    njobs=self.njobs,
                     _node_type="left_node",
                     _ID=TreeComboLR.node_count + 1,
                     _parent=self._ID,
@@ -266,6 +303,7 @@ class TreeComboLR:
                     response_name=self.response,
                     tree_vars=self.tree_vars,
                     reg_vars=self.reg_vars,
+                    njobs=self.njobs,
                     _node_type="right_node",
                     _ID=TreeComboLR.node_count + 1,
                     _parent=self._ID,
