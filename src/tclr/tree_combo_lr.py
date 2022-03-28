@@ -448,7 +448,7 @@ class TreeComboLR:
             # recurse down right child
             self._make_graphviz_labels(child, interps, nodelist, conlist)
 
-    def to_graphviz(self, filename=None, shape="rectangle", graph="digraph"):
+    def to_graphviz(self, filename=None, shape="rectangle", graph="digraph", bgcolor="transparent"):
         # adapted from treelib.tree implementation
         """Exports the tree in the dot format of the graphviz software"""
 
@@ -490,6 +490,7 @@ class TreeComboLR:
         ]
         edge_style = ["fontname=helvetica"]
         f.write(graph + " tree {\n")
+        f.write(f"bgcolor=\"{bgcolor}\"\n")
         f.write(f'node [{", ".join(node_style)}] ;\n')
         f.write(f'edge [{", ".join(edge_style)}] ;\n')
 
