@@ -406,7 +406,7 @@ class TreeComboLR:
         myhex = self._rgb_to_hex(rgb)
         # determine text based on if it is a leaf or not
         if node.rule is None:
-            param_format = self._format_params_for_graph()
+            param_format = node._format_params_for_graph()
             tag = "\n".join(param_format)
         else:
             tag = node.rule
@@ -427,7 +427,7 @@ class TreeComboLR:
             if nid == 0:
                 # when node is root, child is the first
                 # less than or equal to split
-                labelinfo = ["labeldistance=2.5", "labelangle=45", 'headlabel="False"']
+                labelinfo = ["labeldistance=2.5", "labelangle=45", 'headlabel="True"']
                 labelinfo = f"[{', '.join(labelinfo)}]"
                 conlist.append(f'"{nid}" -> "{cid}" {labelinfo}')
             else:
@@ -440,7 +440,7 @@ class TreeComboLR:
             if nid == 0:
                 # when node is root, right child is first
                 # greater than split
-                labelinfo = ["labeldistance=2.5", "labelangle=-45", 'headlabel="True"']
+                labelinfo = ["labeldistance=2.5", "labelangle=-45", 'headlabel="False"']
                 labelinfo = f"[{', '.join(labelinfo)}]"
                 conlist.append(f'"{nid}" -> "{cid}" {labelinfo}')
             else:
