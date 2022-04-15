@@ -148,7 +148,7 @@ class TreeComboLR:
         # i do not know if this is optimal or not but it prevents
         # splits with zero in either the left or right side
         if N_left == 0 or N_right == 0:
-            return float("inf")
+            return max(*y_left, *y_right)**2
         try:
             p_left = self._solve_regression(X_left, y_left)
             left_reg_vars = self.reg_vars
