@@ -1,5 +1,6 @@
 import codecs
 from io import StringIO
+from time import perf_counter as timer
 
 import numpy as np
 import pandas as pd
@@ -153,31 +154,33 @@ class TreeComboLR:
             p_left = self._solve_regression(X_left, y_left)
             left_reg_vars = self.reg_vars
         except np.linalg.LinAlgError as e:
-            bad_columns = self._check_all_entries_zero(X_left)
-            bad_features = [self.feats[i] for i in bad_columns]
-            print(f"Node {self._ID} Left Split: {e}")
-            print(f"Dropping {', '.join(bad_features)} because they are all zero")
-            print("Columns of zero create singular matrices due to linear dependence")
+            return np.mean(y_right)**2
+            # bad_columns = self._check_all_entries_zero(X_left)
+            # bad_features = [self.feats[i] for i in bad_columns]
+            # print(f"Node {self._ID} Left Split: {e}")
+            # print(f"Dropping {', '.join(bad_features)} because they are all zero")
+            # print("Columns of zero create singular matrices due to linear dependence")
 
-            left_reg_vars = list(filter(lambda x: x not in bad_columns, self.reg_vars))
-            p_left = self._solve_regression(X_left, y_left, left_reg_vars)
-            for col in bad_columns:
-                p_left = np.insert(p_left, col, 0.0)
+            # left_reg_vars = list(filter(lambda x: x not in bad_columns, self.reg_vars))
+            # p_left = self._solve_regression(X_left, y_left, left_reg_vars)
+            # for col in bad_columns:
+            #     p_left = np.insert(p_left, col, 0.0)
 
         try:
             p_right = self._solve_regression(X_right, y_right)
             right_reg_vars = self.reg_vars
         except np.linalg.LinAlgError as e:
-            bad_columns = self._check_all_entries_zero(X_right)
-            bad_features = [self.feats[i] for i in bad_columns]
-            print(f"Node {self._ID} Right Split: {e}")
-            print(f"Dropping {', '.join(bad_features)} because they are all zero")
-            print("Columns of zero create singular matrices due to linear dependence")
+            return np.mean(y_left)**2
+            # bad_columns = self._check_all_entries_zero(X_right)
+            # bad_features = [self.feats[i] for i in bad_columns]
+            # print(f"Node {self._ID} Right Split: {e}")
+            # print(f"Dropping {', '.join(bad_features)} because they are all zero")
+            # print("Columns of zero create singular matrices due to linear dependence")
 
-            right_reg_vars = list(filter(lambda x: x not in bad_columns, self.reg_vars))
-            p_right = self._solve_regression(X_right, y_right, right_reg_vars)
-            for col in bad_columns:
-                p_right = np.insert(p_right, col, 0.0)
+            # right_reg_vars = list(filter(lambda x: x not in bad_columns, self.reg_vars))
+            # p_right = self._solve_regression(X_right, y_right, right_reg_vars)
+            # for col in bad_columns:
+            #     p_right = np.insert(p_right, col, 0.0)
 
         yhat_left = self._predict_regression(p_left, X_left)
         yhat_right = self._predict_regression(p_right, X_right)
@@ -189,6 +192,25 @@ class TreeComboLR:
         right_score = N_right / y.shape[0] * mse_right
 
         return left_score + right_score
+
+    def _get_best_thresh_var(self, feat_id, X=None, y=None):
+        X = self.X if X is None else X
+        y = self.y if y is None else y
+
+        # np.unique returns the sorted unique entries
+        # [1:-1] removes the last two and first two thresholds which cannot be used
+        # thresh_possib = np.unique(X[:, feat_id])[2:-2]
+        thresh_possib = np.linspace(X[:, feat_id].min(), X[:, feat_id].max(), 1000)
+        thresh_possib = thresh_possib[1:-1]
+        scores = Parallel(n_jobs=-1, verbose=1)(
+            delayed(self._get_node_score)(
+                t, feat_id, X, y
+            ) for t in thresh_possib
+        )
+        # scores = [self._get_node_score(t, feat_id, X, y) for t in thresh_possib]
+        best = np.argmin(scores)
+        return thresh_possib[best], scores[best]
+
 
     def _optimize_node(self, X=None, y=None):
         X = self.X if X is None else X
@@ -211,24 +233,38 @@ class TreeComboLR:
 
         # EXAMPLE
         if self.njobs > 1:
-            opts = Parallel(n_jobs=self.njobs, verbose=0)(
-                delayed(minimize)(
-                    self._get_node_score,
-                    [np.mean(X[:, feat_id])],
-                    args=(feat_id, X, y),
-                    method=self.method
-                ) for feat_id in self.tree_vars
-            )
-            best = np.argmin([i.fun for i in opts])
+            # opts = Parallel(n_jobs=self.njobs, verbose=0)(
+            #     delayed(minimize)(
+            #         self._get_node_score,
+            #         [np.mean(X[:, feat_id])],
+            #         args=(feat_id, X, y),
+            #         method=self.method
+            #     ) for feat_id in self.tree_vars
+            # )
+            # best = np.argmin([i.fun for i in opts])
+            # opt = opts[best]
+            # opts = Parallel(n_jobs=-1, verbose=11)(
+            #     delayed(self._get_best_thresh_var)(
+            #         feat_id
+            #     ) for feat_id in self.tree_vars
+            # )
+            opts = [self._get_best_thresh_var(i) for i in self.tree_vars]
+            best = np.argmin([i[1] for i in opts])
             opt = opts[best]
-            if opt.fun < mse:
+            # if opt.fun < mse:
+            from IPython import embed as II
+            II()
+            if opt[1] < mse:
                 X_left, X_right, y_left, y_right = self._split_node_data(
-                    opt.x[0], best
+                    # opt.x[0], best
+                    opt[0], best
                 )
                 if X_left.shape[0] > 0 and X_right.shape[0] > 0:
                     best_feat = self.tree_vars[best]
-                    best_val = opt.x[0]
-                    mse = opt.fun
+                    # best_val = opt.x[0]
+                    # mse = opt.fun
+                    best_val = opt[0]
+                    mse = opt[1]
                     if mse < TreeComboLR.min_mse:
                         TreeComboLR.min_mse = mse
                     if mse > TreeComboLR.max_mse:
