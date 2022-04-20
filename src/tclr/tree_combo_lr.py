@@ -87,11 +87,12 @@ class TreeComboLR:
 
         self.best_feat = None
         self.best_val = None
-
+        
         try:
             self.params = self._solve_regression()
         except np.linalg.LinAlgError as e:
             print(f"Cannot solve initial regression due to {e}")
+
         yhat = self._predict_regression(self.params)
 
         self.mse = mean_squared_error(self.y, yhat)
@@ -154,7 +155,7 @@ class TreeComboLR:
             p_left = self._solve_regression(X_left, y_left)
             left_reg_vars = self.reg_vars
         except np.linalg.LinAlgError as e:
-            return np.mean(y_right)**2
+            return np.max(y_right)**2
             # bad_columns = self._check_all_entries_zero(X_left)
             # bad_features = [self.feats[i] for i in bad_columns]
             # print(f"Node {self._ID} Left Split: {e}")
@@ -170,7 +171,7 @@ class TreeComboLR:
             p_right = self._solve_regression(X_right, y_right)
             right_reg_vars = self.reg_vars
         except np.linalg.LinAlgError as e:
-            return np.mean(y_left)**2
+            return np.max(y_left)**2
             # bad_columns = self._check_all_entries_zero(X_right)
             # bad_features = [self.feats[i] for i in bad_columns]
             # print(f"Node {self._ID} Right Split: {e}")
