@@ -252,8 +252,6 @@ class TreeComboLR:
             best = np.argmin([i[1] for i in opts])
             opt = opts[best]
             # if opt.fun < mse:
-            from IPython import embed as II
-            II()
             if opt[1] < mse:
                 X_left, X_right, y_left, y_right = self._split_node_data(
                     # opt.x[0], best
