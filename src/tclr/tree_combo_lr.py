@@ -200,9 +200,13 @@ class TreeComboLR:
         # np.unique returns the sorted unique entries
         # [1:-1] removes the last two and first two thresholds which cannot be used
         # thresh_possib = np.unique(X[:, feat_id])[2:-2]
-        thresh_possib = np.linspace(X[:, feat_id].min(), X[:, feat_id].max(), 1000)
+        thresh_possib = np.linspace(
+                X[:, feat_id].min(),
+                X[:, feat_id].max(), 
+                2000
+        )
         thresh_possib = thresh_possib[1:-1]
-        scores = Parallel(n_jobs=-1, verbose=1)(
+        scores = Parallel(n_jobs=-1, verbose=0)(
             delayed(self._get_node_score)(
                 t, feat_id, X, y
             ) for t in thresh_possib
@@ -251,6 +255,8 @@ class TreeComboLR:
             opts = [self._get_best_thresh_var(i) for i in self.tree_vars]
             best = np.argmin([i[1] for i in opts])
             opt = opts[best]
+            print(f"Best Split: {self.feats[self.tree_vars[best]]}, {opt[0]}")
+            print(opt[1], mse)
             # if opt.fun < mse:
             if opt[1] < mse:
                 X_left, X_right, y_left, y_right = self._split_node_data(
