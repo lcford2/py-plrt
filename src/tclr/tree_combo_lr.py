@@ -200,11 +200,10 @@ class TreeComboLR:
 
         # np.unique returns the sorted unique entries
         # [1:-1] removes the last two and first two thresholds which cannot be used
-        # thresh_possib = np.unique(X[:, feat_id])[2:-2]
         thresh_possib = np.linspace(
                 X[:, feat_id].min(),
                 X[:, feat_id].max(), 
-                2000
+                1000
         )
         thresh_possib = thresh_possib[1:-1]
         scores = Parallel(n_jobs=-1, verbose=0)(
@@ -212,7 +211,6 @@ class TreeComboLR:
                 t, feat_id, X, y
             ) for t in thresh_possib
         )
-        # scores = [self._get_node_score(t, feat_id, X, y) for t in thresh_possib]
         best = np.argmin(scores)
         return thresh_possib[best], scores[best]
 
@@ -225,49 +223,19 @@ class TreeComboLR:
         best_val = None
         mse = self.mse
 
-        # could parallelize this, especially if running on
-        # a system with a lot of processors.
-        # scipy.opt.minimize will use OpenMP to speed up
-        # optimization and with less than 16 cores available
-        # it is probably fastest to iterate and then optimize on all
-        # of those cores, especially if you have a lot of data and few variables
-        # However, if you have more cores, less data, more variables, or
-        # a combination thereof, it could be faster to split optimize
-        # for multiple variables at a time and check the best value at the end.
-        # TODO: Could add options for parallelizing this process (e.g., njobs, nprocs_per_job, etc)
-
-        # EXAMPLE
         if self.njobs > 1:
-            # opts = Parallel(n_jobs=self.njobs, verbose=0)(
-            #     delayed(minimize)(
-            #         self._get_node_score,
-            #         [np.mean(X[:, feat_id])],
-            #         args=(feat_id, X, y),
-            #         method=self.method
-            #     ) for feat_id in self.tree_vars
-            # )
-            # best = np.argmin([i.fun for i in opts])
-            # opt = opts[best]
-            # opts = Parallel(n_jobs=-1, verbose=11)(
-            #     delayed(self._get_best_thresh_var)(
-            #         feat_id
-            #     ) for feat_id in self.tree_vars
-            # )
             opts = [self._get_best_thresh_var(i) for i in self.tree_vars]
-            best = np.argmin([i[1] for i in opts])
-            opt = opts[best]
-            print(f"Best Split: {self.feats[self.tree_vars[best]]}, {opt[0]}")
-            print(opt[1], mse)
-            # if opt.fun < mse:
+            start = [i[0] for i in opts]
+            best_idx = np.argmin([i[1] for i in opts])
+            best = self.tree_vars[best_idx]
+            opt = opts[best_idx]
+
             if opt[1] < mse:
                 X_left, X_right, y_left, y_right = self._split_node_data(
-                    # opt.x[0], best
                     opt[0], best
                 )
                 if X_left.shape[0] > 0 and X_right.shape[0] > 0:
-                    best_feat = self.tree_vars[best]
-                    # best_val = opt.x[0]
-                    # mse = opt.fun
+                    best_feat = best
                     best_val = opt[0]
                     mse = opt[1]
                     if mse < TreeComboLR.min_mse:
@@ -276,21 +244,16 @@ class TreeComboLR:
                         TreeComboLR.max_mse = mse
         else:
             for feat_id in self.tree_vars:
-                opt = minimize(
-                    self._get_node_score,
-                    [np.mean(X[:, feat_id])],
-                    args=(feat_id, X, y),
-                    method=self.method,
-                )
+                opt = self_get_best_thresh_var(feat_id)
 
-                if opt.fun < mse:
+                if opt[1] < mse:
                     X_left, X_right, y_left, y_right = self._split_node_data(
-                        opt.x[0], feat_id
+                        opt[0], feat_id
                     )
                     if X_left.shape[0] > 0 and X_right.shape[0] > 0:
                         best_feat = feat_id
-                        best_val = opt.x[0]
-                        mse = opt.fun
+                        best_val = opt[0]
+                        mse = opt[1]
                         if mse < TreeComboLR.min_mse:
                             TreeComboLR.min_mse = mse
                         if mse > TreeComboLR.max_mse:
