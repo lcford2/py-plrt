@@ -155,7 +155,7 @@ class TreeComboLR:
             p_left = self._solve_regression(X_left, y_left)
             left_reg_vars = self.reg_vars
         except np.linalg.LinAlgError as e:
-            return np.max(y_right)**2
+            return (np.max(y_right)**2, "error")
             # bad_columns = self._check_all_entries_zero(X_left)
             # bad_features = [self.feats[i] for i in bad_columns]
             # print(f"Node {self._ID} Left Split: {e}")
@@ -171,7 +171,7 @@ class TreeComboLR:
             p_right = self._solve_regression(X_right, y_right)
             right_reg_vars = self.reg_vars
         except np.linalg.LinAlgError as e:
-            return np.max(y_left)**2
+            return (np.max(y_left)**2, "error")
             # bad_columns = self._check_all_entries_zero(X_right)
             # bad_features = [self.feats[i] for i in bad_columns]
             # print(f"Node {self._ID} Right Split: {e}")
@@ -183,6 +183,8 @@ class TreeComboLR:
             # for col in bad_columns:
             #     p_right = np.insert(p_right, col, 0.0)
 
+
+        # calc regression score
         yhat_left = self._predict_regression(p_left, X_left)
         yhat_right = self._predict_regression(p_right, X_right)
 
@@ -192,7 +194,35 @@ class TreeComboLR:
         left_score = N_left / y.shape[0] * mse_left
         right_score = N_right / y.shape[0] * mse_right
 
-        return left_score + right_score
+        reg_score = left_score + right_score
+
+        # calc mean prediction score
+        # yhat_left = np.zeros_like(y_left) + np.mean(y_left)
+        # yhat_right = np.zeros_like(y_right) + np.mean(y_right)
+
+        # mse_left = mean_squared_error(y_left, yhat_left)
+        # mse_right = mean_squared_error(y_right, yhat_right)
+
+        # calc persistance score
+        pre_index = self.feats.index("release_pre")
+
+        yhat_left = X_left[:,pre_index]
+        yhat_right = X_right[:,pre_index]
+
+        mse_left = mean_squared_error(y_left, yhat_left)
+        mse_right = mean_squared_error(y_right, yhat_right)
+
+        left_score = N_left / y.shape[0] * mse_left
+        right_score = N_right / y.shape[0] * mse_right
+
+        pers_score = left_score + right_score
+        tolerance = 0.10
+        diff = (pers_score - reg_score) / pers_score
+        if diff < tolerance:
+        # if pers_score <= reg_score:
+            return (pers_score, "pers")
+        else:
+            return (reg_score, "reg")
 
     def _get_best_thresh_var(self, feat_id, X=None, y=None):
         X = self.X if X is None else X
@@ -211,8 +241,9 @@ class TreeComboLR:
                 t, feat_id, X, y
             ) for t in thresh_possib
         )
-        best = np.argmin(scores)
-        return thresh_possib[best], scores[best]
+
+        best = np.argmin([i[0] for i in scores])
+        return thresh_possib[best], *scores[best]
 
 
     def _optimize_node(self, X=None, y=None):
@@ -229,6 +260,8 @@ class TreeComboLR:
             best_idx = np.argmin([i[1] for i in opts])
             best = self.tree_vars[best_idx]
             opt = opts[best_idx]
+            split_type = opt[2]
+            print(f"Optimal Split: {self.feats[best]} <= {opt[1]:.3f} - {split_type}")
 
             if opt[1] < mse:
                 X_left, X_right, y_left, y_right = self._split_node_data(
