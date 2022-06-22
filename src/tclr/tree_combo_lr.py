@@ -8,6 +8,13 @@ from scipy.interpolate import interp1d
 from scipy.optimize import minimize
 from sklearn.metrics import mean_squared_error
 from joblib import Parallel, delayed
+import pickle
+
+
+def load_model(path):
+    with open(path, "rb") as f:
+        model = pickle.load(f)
+    return model
 
 
 class TreeComboLR:
@@ -24,6 +31,7 @@ class TreeComboLR:
         max_depth=None,
         tree_vars=None,
         reg_vars=None,
+        n_disc_samples=1000,
         curr_depth=0,
         method="Nelder-Mead",
         feature_names=None,
@@ -65,6 +73,7 @@ class TreeComboLR:
         self.min_samples_split = (
             min_samples_split if min_samples_split else int(self.N * 0.05)
         )
+        self.n_disc_samples = n_disc_samples
         self.max_depth = max_depth if max_depth else 4
         self.curr_depth = curr_depth
         self.method = method
@@ -233,7 +242,7 @@ class TreeComboLR:
         thresh_possib = np.linspace(
                 X[:, feat_id].min(),
                 X[:, feat_id].max(), 
-                1000
+                self.n_disc_samples
         )
         thresh_possib = thresh_possib[1:-1]
         scores = Parallel(n_jobs=-1, verbose=0)(
@@ -320,6 +329,7 @@ class TreeComboLR:
                     tree_vars=self.tree_vars,
                     reg_vars=self.reg_vars,
                     njobs=self.njobs,
+                    n_disc_samples=self.n_disc_samples,
                     _node_type="left_node",
                     _ID=TreeComboLR.node_count + 1,
                     _parent=self._ID,
@@ -341,6 +351,7 @@ class TreeComboLR:
                     tree_vars=self.tree_vars,
                     reg_vars=self.reg_vars,
                     njobs=self.njobs,
+                    n_disc_samples=self.n_disc_samples,
                     _node_type="right_node",
                     _ID=TreeComboLR.node_count + 1,
                     _parent=self._ID,
@@ -546,3 +557,7 @@ class TreeComboLR:
             print(f.getvalue())
 
         f.close()
+
+    def save_model(self, path):
+        with open(path, "wb") as f:
+            pickle.dump(self, f, protocol=4)
