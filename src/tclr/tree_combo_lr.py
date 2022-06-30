@@ -70,9 +70,13 @@ class TreeComboLR:
         self.feats = feature_names if feature_names else self.feats
         self.response = response_name if response_name else self.response
 
-        self.min_samples_split = (
-            min_samples_split if min_samples_split else int(self.N * 0.05)
-        )
+        if isinstance(min_samples_split, int):
+            self.min_samples_split = min_samples_split
+        elif isinstance(min_samples_split, float):
+            self.min_samples_split = int(self.N * min_samples_split)
+        else:
+            self.min_samples_split = int(self.N * 0.05)
+        
         self.n_disc_samples = n_disc_samples
         self.max_depth = max_depth if max_depth else 4
         self.curr_depth = curr_depth
@@ -164,7 +168,7 @@ class TreeComboLR:
             p_left = self._solve_regression(X_left, y_left)
             left_reg_vars = self.reg_vars
         except np.linalg.LinAlgError as e:
-            return (np.max(y_right)**2, "error")
+            return (np.max(y_left)**2, "error")
             # bad_columns = self._check_all_entries_zero(X_left)
             # bad_features = [self.feats[i] for i in bad_columns]
             # print(f"Node {self._ID} Left Split: {e}")
@@ -180,7 +184,7 @@ class TreeComboLR:
             p_right = self._solve_regression(X_right, y_right)
             right_reg_vars = self.reg_vars
         except np.linalg.LinAlgError as e:
-            return (np.max(y_left)**2, "error")
+            return (np.max(y_right)**2, "error")
             # bad_columns = self._check_all_entries_zero(X_right)
             # bad_features = [self.feats[i] for i in bad_columns]
             # print(f"Node {self._ID} Right Split: {e}")
