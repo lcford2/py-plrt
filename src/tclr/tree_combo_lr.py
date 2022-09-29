@@ -1,5 +1,6 @@
 import codecs
 from io import StringIO
+from re import I
 from time import perf_counter as timer
 
 import numpy as np
@@ -163,14 +164,17 @@ class TreeComboLR:
         # i do not know if this is optimal or not but it prevents
         # splits with zero in either the left or right side
         if N_left == 0 or N_right == 0:
-            return (max(*y_left, *y_right)**2, "error")
+            # return (max(*y_left, *y_right)**2, "error")
+            return (np.nan, "error")
         if N_left < self.min_samples_split or N_right < self.min_samples_split:
-            return (max(*y_left, *y_right)**2, "error")
+            # return (max(*y_left, *y_right)**2, "error")
+            return (np.nan, "error")
         try:
             p_left = self._solve_regression(X_left, y_left)
             left_reg_vars = self.reg_vars
         except np.linalg.LinAlgError as e:
-            return (np.max(y_left)**2, "error")
+            # return (np.max(y_left)**2, "error")
+            return (np.nan, "error")
             # bad_columns = self._check_all_entries_zero(X_left)
             # bad_features = [self.feats[i] for i in bad_columns]
             # print(f"Node {self._ID} Left Split: {e}")
@@ -186,7 +190,8 @@ class TreeComboLR:
             p_right = self._solve_regression(X_right, y_right)
             right_reg_vars = self.reg_vars
         except np.linalg.LinAlgError as e:
-            return (np.max(y_right)**2, "error")
+            # return (np.max(y_right)**2, "error")
+            return (np.nan, "error")
             # bad_columns = self._check_all_entries_zero(X_right)
             # bad_features = [self.feats[i] for i in bad_columns]
             # print(f"Node {self._ID} Right Split: {e}")
@@ -256,8 +261,11 @@ class TreeComboLR:
                 t, feat_id, X, y
             ) for t in thresh_possib
         )
-
-        best = np.argmin([i[0] for i in scores])
+        try:
+            best = np.nanargmin([i[0] for i in scores])
+        except ValueError:
+            # all nans in scores
+            return np.nan, np.nan, "error"
         return thresh_possib[best], *scores[best]
 
 
@@ -272,11 +280,18 @@ class TreeComboLR:
         if self.njobs > 1:
             opts = [self._get_best_thresh_var(i) for i in self.tree_vars]
             start = [i[0] for i in opts]
-            best_idx = np.argmin([i[1] for i in opts])
+            try:
+                best_idx = np.nanargmin([i[1] for i in opts])
+            except ValueError:
+                # all nans in opts
+                return best_feat, best_val
             best = self.tree_vars[best_idx]
             opt = opts[best_idx]
             split_type = opt[2]
-            print(f"Optimal Split: {self.feats[best]} <= {opt[1]:.3f} - {split_type}")
+            # if split_type == "error":
+            #     # here, all the mses are infinity
+            #     return best_feat, best_val  
+            print(f"Optimal Split: {self.feats[best]} <= {opt[0]:.3f} - {split_type}")
 
             if opt[1] < mse:
                 X_left, X_right, y_left, y_right = self._split_node_data(
@@ -399,14 +414,15 @@ class TreeComboLR:
         if self.left is None and self.right is None:
             self._print_params()
 
-    def _find_params(self, row):
+    def _find_params(self, row, path):
+        path.append(self._ID)
         if self.best_feat is not None:
             if row[self.best_feat] <= self.best_val:
-                return self.left._find_params(row)
+                return self.left._find_params(row, path)
             else:
-                return self.right._find_params(row)
+                return self.right._find_params(row, path)
         else:
-            return (self.params, self._ID)
+            return (self.params, self._ID, path)
 
     def apply(self, X=None):
         X = self.X if X is None else X
@@ -415,11 +431,14 @@ class TreeComboLR:
         N = X.shape[0]
         parms = []
         ids = []
+        paths = []
         for i in range(N):
-            parms_i, id_i = self._find_params(X[i, :])
+            path = []
+            parms_i, id_i, path = self._find_params(X[i, :], path)
             parms.append(parms_i)
             ids.append(id_i)
-        return np.array(parms), np.array(ids)
+            paths.append(path)
+        return np.array(parms), np.array(ids), paths
 
     def predict(self, X=None):
         X = self.X if X is None else X
