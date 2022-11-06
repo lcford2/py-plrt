@@ -444,7 +444,7 @@ class TreeComboLR:
         X = self.X if X is None else X
         if hasattr(X, "values"):
             X = X.values
-        params, ids = self.apply(X)
+        params, ids, _ = self.apply(X)
         X = X[:, self.reg_vars]
         return (X * params).sum(axis=1)
 
