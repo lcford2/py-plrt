@@ -1,6 +1,7 @@
 # environment info
 .venv
 **/.dir-locals.el
+.vscode
 
 # python intermediates
 **/__pycache__
