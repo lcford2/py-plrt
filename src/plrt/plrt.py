@@ -1,6 +1,5 @@
 import codecs
 from io import StringIO
-from time import perf_counter as timer
 
 import numpy as np
 import pandas as pd
@@ -17,6 +16,45 @@ def load_model(path):
 
 
 class PieceWiseLinearRegressionTree:
+    """Regression tree that uses linear regression equations as response generators.
+
+    Args:
+        X (array like [2D]): Matrix of independent variables.
+        y (array like): Vector of dependent variables
+        min_samples_split ([float, int], optional): Fraction (or number) of samples
+            required to be in a each child node for a split to be valid.
+            Defaults to 0.05.
+        max_depth (int, optional): Maximum allowable tree depth. Defaults to 4.
+        tree_vars (array like, optional): Variables to be considered when
+            generating splits for the PLRT. If None, all variables from `X`
+            are used. Variables must be in `X`.
+            Defaults to None.
+        reg_vars (array like, optional): Variables to use when fitting regression
+            equations within each leaf. If None, all variable form `X` are used.
+            Variables must be in `X`.
+            Defaults to None.
+        n_disc_steps (int, optional): Number of discretization samples used for
+            determining the optimal threshold for each split. Higher numbers
+            may result in a more optimal split
+            but at the cost of performance. Defaults to 1000.
+        method (str, optional): Currently not used. In future will determine
+            optimzation method for determining thresholds for each split.
+            Defaults to "exhaustive".
+        feature_names (array like, optional): List of feature names to be used
+            when exporting or displaying the tree. Defaults to None.
+        response_name (str, optional): Name of response variable to be used when
+            exporting or displaying the tree. Defaults to None.
+        njobs (int, optional): Number of parallel jobs to use when finding optimal
+            splits. Defaults to 1.
+        _curr_depth (int, optional): INTERNAL USE ONLY: Current depth of tree.
+            Defaults to 0.
+        _node_type ([str, None], optional): INTERNAL USE ONLY: Type of current node
+            [left, right]. Defaults to None.
+        _ID (int, optional): INTERNAL USE ONLY: current node ID. Defaults to 0.
+        _parent ([int, None], optional): INTERNAL USE ONLY: node parent ID.
+            Defaults to None.
+    """
+
     node_count = 0
     init_N = 0
     min_mse = float("inf")
@@ -26,20 +64,20 @@ class PieceWiseLinearRegressionTree:
         self,
         X,
         y,
-        min_samples_split=None,
-        max_depth=None,
+        min_samples_split=0.05,
+        max_depth=4,
         tree_vars=None,
         reg_vars=None,
-        n_disc_samples=1000,
-        curr_depth=0,
-        method="Nelder-Mead",
+        n_disc_steps=1000,
+        method="exhaustive",
         feature_names=None,
         response_name=None,
         njobs=1,
         # variables used internally
+        _curr_depth=0,
         _node_type=None,
         _ID=0,
-        _parent=None
+        _parent=None,
     ):
         self.N = X.shape[0]
         if isinstance(X, pd.DataFrame):
@@ -75,10 +113,10 @@ class PieceWiseLinearRegressionTree:
             self.min_samples_split = int(self.N * min_samples_split)
         else:
             self.min_samples_split = int(self.N * 0.05)
-        
-        self.n_disc_samples = n_disc_samples
+
+        self.n_disc_steps = n_disc_steps
         self.max_depth = max_depth if max_depth else 4
-        self.curr_depth = curr_depth
+        self._curr_depth = _curr_depth
         self.method = method
 
         self.njobs = njobs
@@ -99,7 +137,7 @@ class PieceWiseLinearRegressionTree:
 
         self.best_feat = None
         self.best_val = None
-        
+
         try:
             self.params = self._solve_regression()
         except np.linalg.LinAlgError as e:
@@ -159,48 +197,19 @@ class PieceWiseLinearRegressionTree:
         N_left = y_left.shape[0]
         N_right = y_right.shape[0]
 
-        # i do not know if this is optimal or not but it prevents
-        # splits with zero in either the left or right side
         if N_left == 0 or N_right == 0:
-            # return (max(*y_left, *y_right)**2, "error")
             return (np.nan, "error")
         if N_left < self.min_samples_split or N_right < self.min_samples_split:
-            # return (max(*y_left, *y_right)**2, "error")
             return (np.nan, "error")
         try:
             p_left = self._solve_regression(X_left, y_left)
-            left_reg_vars = self.reg_vars
-        except np.linalg.LinAlgError as e:
-            # return (np.max(y_left)**2, "error")
+        except np.linalg.LinAlgError:
             return (np.nan, "error")
-            # bad_columns = self._check_all_entries_zero(X_left)
-            # bad_features = [self.feats[i] for i in bad_columns]
-            # print(f"Node {self._ID} Left Split: {e}")
-            # print(f"Dropping {', '.join(bad_features)} because they are all zero")
-            # print("Columns of zero create singular matrices due to linear dependence")
-
-            # left_reg_vars = list(filter(lambda x: x not in bad_columns, self.reg_vars))
-            # p_left = self._solve_regression(X_left, y_left, left_reg_vars)
-            # for col in bad_columns:
-            #     p_left = np.insert(p_left, col, 0.0)
 
         try:
             p_right = self._solve_regression(X_right, y_right)
-            right_reg_vars = self.reg_vars
-        except np.linalg.LinAlgError as e:
-            # return (np.max(y_right)**2, "error")
+        except np.linalg.LinAlgError:
             return (np.nan, "error")
-            # bad_columns = self._check_all_entries_zero(X_right)
-            # bad_features = [self.feats[i] for i in bad_columns]
-            # print(f"Node {self._ID} Right Split: {e}")
-            # print(f"Dropping {', '.join(bad_features)} because they are all zero")
-            # print("Columns of zero create singular matrices due to linear dependence")
-
-            # right_reg_vars = list(filter(lambda x: x not in bad_columns, self.reg_vars))
-            # p_right = self._solve_regression(X_right, y_right, right_reg_vars)
-            # for col in bad_columns:
-            #     p_right = np.insert(p_right, col, 0.0)
-
 
         # calc regression score
         yhat_left = self._predict_regression(p_left, X_left)
@@ -214,18 +223,11 @@ class PieceWiseLinearRegressionTree:
 
         reg_score = left_score + right_score
 
-        # calc mean prediction score
-        # yhat_left = np.zeros_like(y_left) + np.mean(y_left)
-        # yhat_right = np.zeros_like(y_right) + np.mean(y_right)
-
-        # mse_left = mean_squared_error(y_left, yhat_left)
-        # mse_right = mean_squared_error(y_right, yhat_right)
-
         # calc persistance score
         pre_index = self.feats.index("release_pre")
 
-        yhat_left = X_left[:,pre_index]
-        yhat_right = X_right[:,pre_index]
+        yhat_left = X_left[:, pre_index]
+        yhat_right = X_right[:, pre_index]
 
         mse_left = mean_squared_error(y_left, yhat_left)
         mse_right = mean_squared_error(y_right, yhat_right)
@@ -237,7 +239,6 @@ class PieceWiseLinearRegressionTree:
         tolerance = 0.10
         diff = (pers_score - reg_score) / pers_score
         if diff < tolerance:
-        # if pers_score <= reg_score:
             return (pers_score, "pers")
         else:
             return (reg_score, "reg")
@@ -249,15 +250,11 @@ class PieceWiseLinearRegressionTree:
         # np.unique returns the sorted unique entries
         # [1:-1] removes the last two and first two thresholds which cannot be used
         thresh_possib = np.linspace(
-                X[:, feat_id].min(),
-                X[:, feat_id].max(), 
-                self.n_disc_samples
+            X[:, feat_id].min(), X[:, feat_id].max(), self.n_disc_steps
         )
         thresh_possib = thresh_possib[1:-1]
         scores = Parallel(n_jobs=-1, verbose=0)(
-            delayed(self._get_node_score)(
-                t, feat_id, X, y
-            ) for t in thresh_possib
+            delayed(self._get_node_score)(t, feat_id, X, y) for t in thresh_possib
         )
         try:
             best = np.nanargmin([i[0] for i in scores])
@@ -265,7 +262,6 @@ class PieceWiseLinearRegressionTree:
             # all nans in scores
             return np.nan, np.nan, "error"
         return thresh_possib[best], *scores[best]
-
 
     def _optimize_node(self, X=None, y=None):
         X = self.X if X is None else X
@@ -277,7 +273,6 @@ class PieceWiseLinearRegressionTree:
 
         if self.njobs > 1:
             opts = [self._get_best_thresh_var(i) for i in self.tree_vars]
-            start = [i[0] for i in opts]
             try:
                 best_idx = np.nanargmin([i[1] for i in opts])
             except ValueError:
@@ -288,13 +283,11 @@ class PieceWiseLinearRegressionTree:
             split_type = opt[2]
             # if split_type == "error":
             #     # here, all the mses are infinity
-            #     return best_feat, best_val  
+            #     return best_feat, best_val
             print(f"Optimal Split: {self.feats[best]} <= {opt[0]:.3f} - {split_type}")
 
             if opt[1] < mse:
-                X_left, X_right, y_left, y_right = self._split_node_data(
-                    opt[0], best
-                )
+                X_left, X_right, y_left, y_right = self._split_node_data(opt[0], best)
                 if X_left.shape[0] > 0 and X_right.shape[0] > 0:
                     best_feat = best
                     best_val = opt[0]
@@ -305,7 +298,7 @@ class PieceWiseLinearRegressionTree:
                         PieceWiseLinearRegressionTree.max_mse = mse
         else:
             for feat_id in self.tree_vars:
-                opt = self_get_best_thresh_var(feat_id)
+                opt = self.get_best_thresh_var(feat_id)
 
                 if opt[1] < mse:
                     X_left, X_right, y_left, y_right = self._split_node_data(
@@ -323,9 +316,10 @@ class PieceWiseLinearRegressionTree:
         return best_feat, best_val
 
     def fit(self):
+        """Fit the model defined by this class"""
         N = self.X.shape[0]
 
-        if (self.curr_depth < self.max_depth) and (N >= self.min_samples_split):
+        if (self._curr_depth < self.max_depth) and (N >= self.min_samples_split):
             best_feat, best_val = self._optimize_node()
             if best_feat is not None:
                 X_left, X_right, y_left, y_right = self._split_node_data(
@@ -341,14 +335,14 @@ class PieceWiseLinearRegressionTree:
                     y=y_left,
                     min_samples_split=self.min_samples_split,
                     max_depth=self.max_depth,
-                    curr_depth=self.curr_depth + 1,
+                    _curr_depth=self._curr_depth + 1,
                     method=self.method,
                     feature_names=self.feats,
                     response_name=self.response,
                     tree_vars=self.tree_vars,
                     reg_vars=self.reg_vars,
                     njobs=self.njobs,
-                    n_disc_samples=self.n_disc_samples,
+                    n_disc_steps=self.n_disc_steps,
                     _node_type="left_node",
                     _ID=PieceWiseLinearRegressionTree.node_count + 1,
                     _parent=self._ID,
@@ -363,14 +357,14 @@ class PieceWiseLinearRegressionTree:
                     y=y_right,
                     min_samples_split=self.min_samples_split,
                     max_depth=self.max_depth,
-                    curr_depth=self.curr_depth + 1,
+                    _curr_depth=self._curr_depth + 1,
                     method=self.method,
                     feature_names=self.feats,
                     response_name=self.response,
                     tree_vars=self.tree_vars,
                     reg_vars=self.reg_vars,
                     njobs=self.njobs,
-                    n_disc_samples=self.n_disc_samples,
+                    n_disc_steps=self.n_disc_steps,
                     _node_type="right_node",
                     _ID=PieceWiseLinearRegressionTree.node_count + 1,
                     _parent=self._ID,
@@ -381,7 +375,7 @@ class PieceWiseLinearRegressionTree:
                 self.right.fit()
 
     def _print_info(self, width=4):
-        const = int(self.curr_depth * width ** 1.5)
+        const = int(self._curr_depth * width**1.5)
         spaces = "-" * const
 
         if self._node_type == "root":
@@ -392,7 +386,7 @@ class PieceWiseLinearRegressionTree:
         print(f"{' ' * const}   | N obs in the node: {self.X.shape[0]:.0f}")
 
     def _print_params(self, width=4):
-        const = int(self.curr_depth * width ** 1.5)
+        const = int(self._curr_depth * width**1.5)
         param_format = [
             f"{self.feats[i]}: {j:.3f}" for i, j in zip(self.reg_vars, self.params)
         ]
@@ -401,6 +395,7 @@ class PieceWiseLinearRegressionTree:
             print(f"{' ' * (const + width)}   | {p}")
 
     def print_tree(self):
+        """Print tree from fitted model."""
         self._print_info()
 
         if self.left is not None:
@@ -423,6 +418,17 @@ class PieceWiseLinearRegressionTree:
             return (self.params, self._ID, path)
 
     def apply(self, X=None):
+        """Apply fitted model to fitted data or new data.
+
+        Args:
+            X (array like [2D], optional): Independent variables to use
+                when applying the tree. If None, the `X` used to fit the
+                model is used. Defaults to None.
+
+        Returns:
+            tuple: parameters, node id, and paths to get to that node
+                for each entry in X
+        """
         X = self.X if X is None else X
         if hasattr(X, "values"):
             X = X.values
@@ -439,6 +445,16 @@ class PieceWiseLinearRegressionTree:
         return np.array(parms), np.array(ids), paths
 
     def predict(self, X=None):
+        """Use fitted model to predict the response given X values.
+
+        Args:
+            X (array like [2D], optional): Independent variables to use
+                when applying the tree. If None, the `X` used to fit the
+                model is used. Defaults to None.
+
+        Returns:
+            np.array: vector or predicted response variables
+        """
         X = self.X if X is None else X
         if hasattr(X, "values"):
             X = X.values
@@ -484,7 +500,9 @@ class PieceWiseLinearRegressionTree:
 
         # formatting text
         mse_fmt = f"mse = {node.mse:.3f}\n"
-        pct_smp = f"samples = {node.N / PieceWiseLinearRegressionTree.init_N * 100:0.1f}%\n"
+        pct_smp = (
+            f"samples = {node.N / PieceWiseLinearRegressionTree.init_N * 100:0.1f}%\n"
+        )
         tag = mse_fmt + pct_smp + tag
 
         # append 'dot' information to nodelist
@@ -519,7 +537,18 @@ class PieceWiseLinearRegressionTree:
             # recurse down right child
             self._make_graphviz_labels(child, interps, nodelist, conlist)
 
-    def to_graphviz(self, filename=None, shape="rectangle", graph="digraph", bgcolor="transparent"):
+    def to_graphviz(
+        self, filename=None, shape="rectangle", graph="digraph", bgcolor="transparent"
+    ):
+        """Export tree in the ".dot" format for graphviz.
+
+        Args:
+            filename (str, optional): Filename to save to. If None, print to stdout.
+            Defaults to None.
+            shape (str, optional): shape of nodes. Defaults to "rectangle".
+            graph (str, optional): graph style. Defaults to "digraph".
+            bgcolor (str, optional): background color of graph. Defaults to "transparent".
+        """
         # adapted from treelib.tree implementation
         """Exports the tree in the dot format of the graphviz software"""
 
@@ -531,13 +560,25 @@ class PieceWiseLinearRegressionTree:
 
         # interpolate between max and min
         rinterp = interp1d(
-            [PieceWiseLinearRegressionTree.min_mse, PieceWiseLinearRegressionTree.max_mse], [min_rgb[0], max_rgb[0]],
+            [
+                PieceWiseLinearRegressionTree.min_mse,
+                PieceWiseLinearRegressionTree.max_mse,
+            ],
+            [min_rgb[0], max_rgb[0]],
         )
         ginterp = interp1d(
-            [PieceWiseLinearRegressionTree.min_mse, PieceWiseLinearRegressionTree.max_mse], [min_rgb[1], max_rgb[1]],
+            [
+                PieceWiseLinearRegressionTree.min_mse,
+                PieceWiseLinearRegressionTree.max_mse,
+            ],
+            [min_rgb[1], max_rgb[1]],
         )
         binterp = interp1d(
-            [PieceWiseLinearRegressionTree.min_mse, PieceWiseLinearRegressionTree.max_mse], [min_rgb[2], max_rgb[2]],
+            [
+                PieceWiseLinearRegressionTree.min_mse,
+                PieceWiseLinearRegressionTree.max_mse,
+            ],
+            [min_rgb[2], max_rgb[2]],
         )
         interps = [rinterp, ginterp, binterp]
 
@@ -561,7 +602,7 @@ class PieceWiseLinearRegressionTree:
         ]
         edge_style = ["fontname=helvetica"]
         f.write(graph + " tree {\n")
-        f.write(f"bgcolor=\"{bgcolor}\"\n")
+        f.write(f'bgcolor="{bgcolor}"\n')
         f.write(f'node [{", ".join(node_style)}] ;\n')
         f.write(f'edge [{", ".join(edge_style)}] ;\n')
 
@@ -581,6 +622,14 @@ class PieceWiseLinearRegressionTree:
 
         f.close()
 
-    def save_model(self, path):
+    def save_model(self, path, **kwargs):
+        """Serialize model using pickle
+
+        Args:
+            path (str): Path to save serialized model to.
+            kwargs (dict): Additional kwargs to pass to pickle.dump
+        """
+        if not kwargs.get("protocol"):
+            kwargs["protocol"] = 4
         with open(path, "wb") as f:
-            pickle.dump(self, f, protocol=4)
+            pickle.dump(self, f, **kwargs)
