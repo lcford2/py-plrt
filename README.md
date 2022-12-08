@@ -1,6 +1,7 @@
-# PLRT
+# py-plrt
 
-This package combines two widely used and interpretable machine learning algorithms (Decision Trees and Linear Regression) to create Piece-Wise Linear Regression Trees (PLRTs). 
+This package combines two widely used and interpretable machine learning algorithms (Decision Trees and Linear Regression) to create Piece-Wise Linear Regression Trees (PLRTs). This idea is introduced by [Alexander and Grimshaw (1996)](https://www.jstor.org/stable/1390778).
+
 Decision Trees are non-parametric, supervised learning methods that split the data at a specific threshold for a specific feature to optimize a loss function (e.g. mean square error (MSE)). 
 Linear regression is a parametric, supervised learning method that uses a linear combination of a set of features to predict a response variable. 
 
@@ -12,3 +13,14 @@ Combining a decision tree on top of several linear regression formulations and f
 
 Portions of this package are inspired by the [DecisionTreeRegressor from scikit-learn](https://scikit-learn.org/stable/modules/generated/sklearn.tree.DecisionTreeRegressor.html) and the [Regression Tree in Python From Scratch](https://towardsdatascience.com/regression-tree-in-python-from-scratch-9b7b64c815e3) article by [Eligijus Bujokas](https://eligijus-bujokas.medium.com/). 
 Visualization methods are adapted from [treelib](https://treelib.readthedocs.io/en/latest/). 
+
+## Installation
+
+Install `py-plrt` with pip: `pip install py-plrt`
+
+Clone the repository and install a local version:
+```bash
+git clone https://github.com/lcford2/py-plrt.git
+cd py-plrt
+pip install -e .
+```
