@@ -1,12 +1,10 @@
 import codecs
 from io import StringIO
-from re import I
 from time import perf_counter as timer
 
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
-from scipy.optimize import minimize
 from sklearn.metrics import mean_squared_error
 from joblib import Parallel, delayed
 import pickle
@@ -18,7 +16,7 @@ def load_model(path):
     return model
 
 
-class TreeComboLR:
+class PieceWiseLinearRegressionTree:
     node_count = 0
     init_N = 0
     min_mse = float("inf")
@@ -91,10 +89,10 @@ class TreeComboLR:
         self._ID = _ID
         self._parent = _parent
         if _ID == 0:
-            TreeComboLR.node_count = 0
-            TreeComboLR.min_mse = float("inf")
-            TreeComboLR.max_mse = -float("inf")
-            TreeComboLR.init_N = self.N
+            PieceWiseLinearRegressionTree.node_count = 0
+            PieceWiseLinearRegressionTree.min_mse = float("inf")
+            PieceWiseLinearRegressionTree.max_mse = -float("inf")
+            PieceWiseLinearRegressionTree.init_N = self.N
 
         self.left = None
         self.right = None
@@ -110,10 +108,10 @@ class TreeComboLR:
         yhat = self._predict_regression(self.params)
 
         self.mse = mean_squared_error(self.y, yhat)
-        if self.mse < TreeComboLR.min_mse:
-            TreeComboLR.min_mse = self.mse
-        if self.mse > TreeComboLR.max_mse:
-            TreeComboLR.max_mse = self.mse
+        if self.mse < PieceWiseLinearRegressionTree.min_mse:
+            PieceWiseLinearRegressionTree.min_mse = self.mse
+        if self.mse > PieceWiseLinearRegressionTree.max_mse:
+            PieceWiseLinearRegressionTree.max_mse = self.mse
 
     def _solve_regression(self, X=None, y=None, reg_vars=None):
         X = self.X if X is None else X
@@ -301,10 +299,10 @@ class TreeComboLR:
                     best_feat = best
                     best_val = opt[0]
                     mse = opt[1]
-                    if mse < TreeComboLR.min_mse:
-                        TreeComboLR.min_mse = mse
-                    if mse > TreeComboLR.max_mse:
-                        TreeComboLR.max_mse = mse
+                    if mse < PieceWiseLinearRegressionTree.min_mse:
+                        PieceWiseLinearRegressionTree.min_mse = mse
+                    if mse > PieceWiseLinearRegressionTree.max_mse:
+                        PieceWiseLinearRegressionTree.max_mse = mse
         else:
             for feat_id in self.tree_vars:
                 opt = self_get_best_thresh_var(feat_id)
@@ -317,10 +315,10 @@ class TreeComboLR:
                         best_feat = feat_id
                         best_val = opt[0]
                         mse = opt[1]
-                        if mse < TreeComboLR.min_mse:
-                            TreeComboLR.min_mse = mse
-                        if mse > TreeComboLR.max_mse:
-                            TreeComboLR.max_mse = mse
+                        if mse < PieceWiseLinearRegressionTree.min_mse:
+                            PieceWiseLinearRegressionTree.min_mse = mse
+                        if mse > PieceWiseLinearRegressionTree.max_mse:
+                            PieceWiseLinearRegressionTree.max_mse = mse
 
         return best_feat, best_val
 
@@ -338,7 +336,7 @@ class TreeComboLR:
                 self.best_val = best_val
                 self.rule = f"{self.feats[best_feat]} &le; {best_val:.3f}"
 
-                left = TreeComboLR(
+                left = PieceWiseLinearRegressionTree(
                     X=X_left,
                     y=y_left,
                     min_samples_split=self.min_samples_split,
@@ -352,15 +350,15 @@ class TreeComboLR:
                     njobs=self.njobs,
                     n_disc_samples=self.n_disc_samples,
                     _node_type="left_node",
-                    _ID=TreeComboLR.node_count + 1,
+                    _ID=PieceWiseLinearRegressionTree.node_count + 1,
                     _parent=self._ID,
                 )
 
-                TreeComboLR.node_count += 1
+                PieceWiseLinearRegressionTree.node_count += 1
                 self.left = left
                 self.left.fit()
 
-                right = TreeComboLR(
+                right = PieceWiseLinearRegressionTree(
                     X=X_right,
                     y=y_right,
                     min_samples_split=self.min_samples_split,
@@ -374,11 +372,11 @@ class TreeComboLR:
                     njobs=self.njobs,
                     n_disc_samples=self.n_disc_samples,
                     _node_type="right_node",
-                    _ID=TreeComboLR.node_count + 1,
+                    _ID=PieceWiseLinearRegressionTree.node_count + 1,
                     _parent=self._ID,
                 )
 
-                TreeComboLR.node_count += 1
+                PieceWiseLinearRegressionTree.node_count += 1
                 self.right = right
                 self.right.fit()
 
@@ -486,7 +484,7 @@ class TreeComboLR:
 
         # formatting text
         mse_fmt = f"mse = {node.mse:.3f}\n"
-        pct_smp = f"samples = {node.N / TreeComboLR.init_N * 100:0.1f}%\n"
+        pct_smp = f"samples = {node.N / PieceWiseLinearRegressionTree.init_N * 100:0.1f}%\n"
         tag = mse_fmt + pct_smp + tag
 
         # append 'dot' information to nodelist
@@ -533,13 +531,13 @@ class TreeComboLR:
 
         # interpolate between max and min
         rinterp = interp1d(
-            [TreeComboLR.min_mse, TreeComboLR.max_mse], [min_rgb[0], max_rgb[0]],
+            [PieceWiseLinearRegressionTree.min_mse, PieceWiseLinearRegressionTree.max_mse], [min_rgb[0], max_rgb[0]],
         )
         ginterp = interp1d(
-            [TreeComboLR.min_mse, TreeComboLR.max_mse], [min_rgb[1], max_rgb[1]],
+            [PieceWiseLinearRegressionTree.min_mse, PieceWiseLinearRegressionTree.max_mse], [min_rgb[1], max_rgb[1]],
         )
         binterp = interp1d(
-            [TreeComboLR.min_mse, TreeComboLR.max_mse], [min_rgb[2], max_rgb[2]],
+            [PieceWiseLinearRegressionTree.min_mse, PieceWiseLinearRegressionTree.max_mse], [min_rgb[2], max_rgb[2]],
         )
         interps = [rinterp, ginterp, binterp]
 

@@ -3,8 +3,7 @@ import datetime
 import pandas as pd
 from sklearn.metrics import r2_score, mean_squared_error
 
-from ..tclr import TreeComboLR
-import sys
+from ..plrt import PieceWiseLinearRegressionTree
 
 
 
@@ -100,7 +99,7 @@ def main():
     y = scaled_train[response]
 
     # define and train model
-    model = TreeComboLR(X, y)
+    model = PieceWiseLinearRegressionTree(X, y)
     model.grow_tree()
 
     # get predictions
@@ -140,8 +139,6 @@ def main():
     )
     print("Testing set reservoir metrics:")
     print(test_scores)
-    from IPython import embed as II
-    II()
 
 if __name__ == "__main__":
     main()
