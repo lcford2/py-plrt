@@ -53,6 +53,8 @@ class PieceWiseLinearRegressionTree:
         _ID (int, optional): INTERNAL USE ONLY: current node ID. Defaults to 0.
         _parent ([int, None], optional): INTERNAL USE ONLY: node parent ID.
             Defaults to None.
+        _vars_indices_already (bool, optional): INTERNAL USE ONLY: indicates if
+            reg/tree vars have already been converted to indices of self.feats. 
     """
 
     node_count = 0
@@ -78,6 +80,7 @@ class PieceWiseLinearRegressionTree:
         _node_type=None,
         _ID=0,
         _parent=None,
+        _vars_indices_already=False
     ):
         self.N = X.shape[0]
         if isinstance(X, pd.DataFrame):
@@ -94,18 +97,24 @@ class PieceWiseLinearRegressionTree:
             self.y = y
             self.response = "y"
 
+        self.feats = feature_names if feature_names else self.feats
+        self.response = response_name if response_name else self.response
+
         if tree_vars is not None:
-            self.tree_vars = [self.feats.index(i) for i in tree_vars]
+            if _vars_indices_already:
+                self.tree_vars = tree_vars
+            else:
+                self.tree_vars = [self.feats.index(i) for i in tree_vars]
         else:
             self.tree_vars = list(range(X.shape[1]))
 
         if reg_vars is not None:
-            self.reg_vars = [self.feats.index(i) for i in reg_vars]
+            if _vars_indices_already:
+                self.reg_vars = reg_vars
+            else:
+                self.reg_vars = [self.feats.index(i) for i in reg_vars]
         else:
             self.reg_vars = list(range(X.shape[1]))
-
-        self.feats = feature_names if feature_names else self.feats
-        self.response = response_name if response_name else self.response
 
         if isinstance(min_samples_split, int):
             self.min_samples_split = min_samples_split
@@ -346,6 +355,7 @@ class PieceWiseLinearRegressionTree:
                     _node_type="left_node",
                     _ID=PieceWiseLinearRegressionTree.node_count + 1,
                     _parent=self._ID,
+                    _vars_indices_already=True,
                 )
 
                 PieceWiseLinearRegressionTree.node_count += 1
@@ -368,6 +378,7 @@ class PieceWiseLinearRegressionTree:
                     _node_type="right_node",
                     _ID=PieceWiseLinearRegressionTree.node_count + 1,
                     _parent=self._ID,
+                    _vars_indices_already=True,
                 )
 
                 PieceWiseLinearRegressionTree.node_count += 1
