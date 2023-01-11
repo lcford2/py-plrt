@@ -2,12 +2,12 @@
 .venv
 **/.dir-locals.el
 .vscode
+Pipfile.lock
 
 # python intermediates
 **/__pycache__
 
-# pypi info 
+# pypi info
 dist
 build
 src/*.egg-info
-
