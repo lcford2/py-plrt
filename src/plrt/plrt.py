@@ -484,6 +484,22 @@ class PieceWiseLinearRegressionTree:
     def _rgb_to_hex(rgb):
         return "#%02x%02x%02x" % rgb
 
+    def parse_tree_structure(self, node, nodelist, conlist):
+        nodelist.append((
+            node._id, node.best_feat, node.best_val
+        ))
+
+        if node.left:
+            child = node.left
+            cid = child._id
+            conlist.append((node._id, cid))
+            self.parse_tree_structure(child, nodelist, conlist)
+        if node.right:
+            child = node.right
+            cid = child._id
+            conlist.append((node._id, cid))
+            self.parse_tree_structure(child, nodelist, conlist)
+            
     def _make_graphviz_labels(self, node, interps, nodelist, conlist):
         # get information about current node
         nid = node._ID
