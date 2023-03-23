@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 profile = "black"
 
 [tool.black]
-line-length = 90
+line-length = 88
 include = "\\.pyi?$"
 exclude = '''
 /(

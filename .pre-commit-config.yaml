@@ -15,7 +15,7 @@ repos:
   rev: 5.10.1
   hooks:
     - id: isort
-      args: [--profile, black, -l, "80"]
+      args: [--profile, black, -l, "88"]
       name: isort (python)
 
 - repo: https://github.com/psf/black

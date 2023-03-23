@@ -1,12 +1,12 @@
 import codecs
+import pickle
 from io import StringIO
 
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 from scipy.interpolate import interp1d
 from sklearn.metrics import mean_squared_error
-from joblib import Parallel, delayed
-import pickle
 
 
 def load_model(path):
@@ -54,7 +54,7 @@ class PieceWiseLinearRegressionTree:
         _parent ([int, None], optional): INTERNAL USE ONLY: node parent ID.
             Defaults to None.
         _vars_indices_already (bool, optional): INTERNAL USE ONLY: indicates if
-            reg/tree vars have already been converted to indices of self.feats. 
+            reg/tree vars have already been converted to indices of self.feats.
     """
 
     node_count = 0
@@ -80,7 +80,7 @@ class PieceWiseLinearRegressionTree:
         _node_type=None,
         _ID=0,
         _parent=None,
-        _vars_indices_already=False
+        _vars_indices_already=False,
     ):
         self.N = X.shape[0]
         if isinstance(X, pd.DataFrame):
@@ -475,13 +475,14 @@ class PieceWiseLinearRegressionTree:
 
     def _format_params_for_graph(self):
         min_width = 0
-        for feat_id in self.reg_vars:
-            width = len(self.feats[feat_id]) + 12
+        feats = [self.feats[feat_id] for feat_id in self.reg_vars]
+        for feature in feats:
+            width = len(feature) + 12
             if width > min_width:
                 min_width = width
 
         param_format = [
-            f"{i}: {j:5.3f}".rjust(min_width) for i, j in zip(self.feats, self.params)
+            f"{i}: {j: 5.3f}".rjust(min_width) for i, j in zip(feats, self.params)
         ]
         return param_format
 
@@ -489,7 +490,7 @@ class PieceWiseLinearRegressionTree:
     def _hex_to_rgb(value):
         value = value.lstrip("#")
         lv = len(value)
-        return tuple(int(value[i: i + lv // 3], 16) for i in range(0, lv, lv // 3))
+        return tuple(int(value[i : i + lv // 3], 16) for i in range(0, lv, lv // 3))
 
     @staticmethod
     def _rgb_to_hex(rgb):
@@ -500,7 +501,11 @@ class PieceWiseLinearRegressionTree:
         nid = node._ID
         mse = [node.mse]
         # interpolate for the color
-        rgb = (int(interps[0](mse)[0]), int(interps[1](mse)[0]), int(interps[2](mse)[0]))
+        rgb = (
+            int(interps[0](mse)[0]),
+            int(interps[1](mse)[0]),
+            int(interps[2](mse)[0]),
+        )
         myhex = self._rgb_to_hex(rgb)
         # determine text based on if it is a leaf or not
         if node.rule is None:
@@ -511,10 +516,9 @@ class PieceWiseLinearRegressionTree:
 
         # formatting text
         mse_fmt = f"mse = {node.mse:.3f}\n"
-        pct_smp = (
-            f"samples = {node.N / PieceWiseLinearRegressionTree.init_N * 100:0.1f}%\n"
-        )
-        tag = mse_fmt + pct_smp + tag
+        init_n = PieceWiseLinearRegressionTree.init_N
+        pct_smp = f"samples = {node.N / init_n * 100:0.1f}%\n"
+        tag = "".join([mse_fmt, pct_smp, tag])
 
         # append 'dot' information to nodelist
         state = f'"{nid}" [label="{tag}", fillcolor="{myhex}"]'
@@ -527,7 +531,11 @@ class PieceWiseLinearRegressionTree:
             if nid == 0:
                 # when node is root, child is the first
                 # less than or equal to split
-                labelinfo = ["labeldistance=2.5", "labelangle=45", 'headlabel="True"']
+                labelinfo = [
+                    "labeldistance=2.5",
+                    "labelangle=45",
+                    'headlabel="True"',
+                ]
                 labelinfo = f"[{', '.join(labelinfo)}]"
                 conlist.append(f'"{nid}" -> "{cid}" {labelinfo}')
             else:
@@ -540,7 +548,11 @@ class PieceWiseLinearRegressionTree:
             if nid == 0:
                 # when node is root, right child is first
                 # greater than split
-                labelinfo = ["labeldistance=2.5", "labelangle=-45", 'headlabel="False"']
+                labelinfo = [
+                    "labeldistance=2.5",
+                    "labelangle=-45",
+                    'headlabel="False"',
+                ]
                 labelinfo = f"[{', '.join(labelinfo)}]"
                 conlist.append(f'"{nid}" -> "{cid}" {labelinfo}')
             else:
@@ -549,7 +561,11 @@ class PieceWiseLinearRegressionTree:
             self._make_graphviz_labels(child, interps, nodelist, conlist)
 
     def to_graphviz(
-        self, filename=None, shape="rectangle", graph="digraph", bgcolor="transparent"
+        self,
+        filename=None,
+        shape="rectangle",
+        graph="digraph",
+        bgcolor="transparent",
     ):
         """Export tree in the ".dot" format for graphviz.
 
@@ -558,7 +574,8 @@ class PieceWiseLinearRegressionTree:
             Defaults to None.
             shape (str, optional): shape of nodes. Defaults to "rectangle".
             graph (str, optional): graph style. Defaults to "digraph".
-            bgcolor (str, optional): background color of graph. Defaults to "transparent".
+            bgcolor (str, optional): background color of graph.
+                Defaults to "transparent".
         """
         # adapted from treelib.tree implementation
         """Exports the tree in the dot format of the graphviz software"""
